@@ -7,8 +7,8 @@ from bot import InstagramBot
 def generate_txt(relations_file, my_followers_arr, username):
     relations = open(relations_file, 'w+')
     user_url = "https://instagram.com/" + username + "/"
-    for key in my_followers_arr:
-        follower_url = "https://instagram.com/" + key + "/"
+    for follower in my_followers_arr:
+        follower_url = "https://instagram.com/" + follower.split(',')[0] + "/"
         relations.write(follower_url + " " + user_url + "\n")
         relations.write(user_url + " " + follower_url + "\n")
 
