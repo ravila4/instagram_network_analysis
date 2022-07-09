@@ -1,12 +1,9 @@
-from calendar import c
 import collections
 import json
 import random
 import re
 import sys
 import time
-from collections import defaultdict
-from tkinter import W
 
 import requests
 from selenium.common.exceptions import NoSuchElementException
