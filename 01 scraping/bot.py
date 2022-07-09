@@ -73,7 +73,7 @@ class InstagramBot(Bot):
         if not self.headers:
             # get headers required to make the requests
             self.go_to_page(f"https://instagram.com/{username}/followers/")
-            time.sleep(4)
+            time.sleep(random.randint(2, 6))
             for request in self.driver.requests:
                 if request.url.startswith(followers_url):
                     if request.response.status_code == 200:
@@ -118,7 +118,7 @@ class InstagramBot(Bot):
         if not self.headers:
             # get headers required to make the requests
             self.go_to_page(f"https://instagram.com/{username}/following/")
-            time.sleep(15)
+            time.sleep(random.randint(5, 10))
             for request in self.driver.requests:
                 if request.url.startswith(following_url):
                     if request.response.status_code == 200:
@@ -134,6 +134,7 @@ class InstagramBot(Bot):
         # Request followers
         params = {"count": 100}
         response = requests.get(following_url, headers=self.headers, params=params, cookies=self.cookies)
+        time.sleep(random.randint(2, 12))
         response.raise_for_status()
         following = response.json()
         if len(following['users']) == 0:
@@ -146,6 +147,7 @@ class InstagramBot(Bot):
         while next_id is not None:
             params['max_id'] = next_id
             response = requests.get(following_url, headers=self.headers, params=params, cookies=self.cookies)
+            time.sleep(random.randint(1, 8))
             response.raise_for_status()
             followers = response.json()
             for follower in followers['users']:
