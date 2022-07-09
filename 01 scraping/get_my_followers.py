@@ -5,7 +5,7 @@ import argparse
 def generate_my_followers_txt(my_followers):
     my_followers_txt = open("my_followers.txt", 'w+')
     for follower in my_followers:
-        my_followers_txt.write(follower[0] + "\n")
+        my_followers_txt.write(",".join([str(d) for d in follower]) + "\n")
 
 
 def get_my_followers(config):

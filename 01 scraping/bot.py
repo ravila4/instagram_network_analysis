@@ -1,7 +1,5 @@
-import collections
 import json
 import random
-import re
 import sys
 import time
 
@@ -39,18 +37,18 @@ class InstagramBot(Bot):
 
     def login(self, username, password):
         self.go_to_page("https://www.instagram.com/accounts/login/")
-        time.sleep(2)
+        time.sleep(random.randint(2, 4))
         self.driver.find_element("xpath", "//input[@name='username']").send_keys(username)
         self.driver.find_element("xpath", "//input[@name='password']").send_keys(password)
-        time.sleep(2)
+        time.sleep(random.randint(1, 4))
         self.driver.find_element("xpath", "//button[contains(.,'Log In')]").click()
-        time.sleep(2)
+        time.sleep(random.randint(2, 4))
         # Not strictly necessary, but let's close the dialogs that pop up.
         # Comment out the next lines if it causes problems.
         self.driver.find_element("xpath", "//button[contains(.,'Not Now')]").click()
-        time.sleep(3)
+        time.sleep(random.randint(2, 5))
         self.driver.find_element("xpath", "//button[contains(.,'Not Now')]").click()
-        time.sleep(3)
+        time.sleep(random.randint(2, 5))
 
     def get_user_id(self, username):
         self.go_to_page("https://instagram.com/" + username)
@@ -66,9 +64,10 @@ class InstagramBot(Bot):
                     return user_id
 
 
-    def get_followers(self, username):
+    def get_followers(self, username, user_id=None):
         """"Get the followers of a user."""
-        user_id = self.get_user_id(username)
+        if not user_id:
+            user_id = self.get_user_id(username)
         followers_set = set()
         followers_url = f"https://i.instagram.com/api/v1/friendships/{user_id}/followers/"
         if not self.headers:
@@ -109,15 +108,16 @@ class InstagramBot(Bot):
             next_id = followers.get('next_max_id')
         return list(followers_set)
 
-    def get_following(self, username):
+    def get_following(self, username, user_id=None):
         """"Get the users followed by a user."""
-        user_id = self.get_user_id(username)
+        if not user_id:
+            user_id = self.get_user_id(username)
         following_set = set()
         following_url = f"https://i.instagram.com/api/v1/friendships/{user_id}/following/"
         if not self.headers:
             # get headers required to make the requests
             self.go_to_page(f"https://instagram.com/{username}/following/")
-            time.sleep(4)
+            time.sleep(6)
             for request in self.driver.requests:
                 if request.url.startswith(following_url):
                     if request.response.status_code == 200:
@@ -154,22 +154,24 @@ class InstagramBot(Bot):
 
     def get_followers_following(self, my_followers_arr, start_profile, relations_file):
         count_my_followers = start_profile - 1
+        my_followers_names = [s.split(',')[0] for s in my_followers_arr]
 
         for current_profile in my_followers_arr[start_profile - 1 : -1] + [my_followers_arr[-1]]:
-            print("Start scraping " + current_profile)
-            username = current_profile.split("/")[-1]
+            username = current_profile.split(",")[0]
+            print("Start scraping " + username)
+            _id = current_profile.split(",")[-1]
             # keep track of last profile checked
             count_my_followers += 1
             with open('start_profile.txt', 'w+') as outfile:
                 outfile.write(str(count_my_followers))
 
-            following = self.get_following(username)
-            time.sleep(random.randint(5, 20))
+            following = self.get_following(username, user_id=_id)
             following_intersection = set()
             for user in following:
-                if user[0] in my_followers_arr:
-                    user_profile = "https://instagram.com/" + user[0] + "/"
-                    following_intersection.add((current_profile, user_profile))
+                if user[0] in my_followers_names:
+                    user_url = "https://instagram.com/" + user[0] + "/"
+                    current_url = "https://instagram.com/" + username + "/"
+                    following_intersection.add((current_url, user_url))
 
             with open(relations_file, "a") as outfile:
                 for relation in following_intersection:
