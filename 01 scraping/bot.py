@@ -114,10 +114,11 @@ class InstagramBot(Bot):
             user_id = self.get_user_id(username)
         following_set = set()
         following_url = f"https://i.instagram.com/api/v1/friendships/{user_id}/following/"
+        time.sleep(3)
         if not self.headers:
             # get headers required to make the requests
             self.go_to_page(f"https://instagram.com/{username}/following/")
-            time.sleep(6)
+            time.sleep(15)
             for request in self.driver.requests:
                 if request.url.startswith(following_url):
                     if request.response.status_code == 200:
