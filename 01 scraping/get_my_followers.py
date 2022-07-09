@@ -1,23 +1,21 @@
-from bot import Bot
+from bot import InstagramBot
 import argparse
 
 
 def generate_my_followers_txt(my_followers):
     my_followers_txt = open("my_followers.txt", 'w+')
     for follower in my_followers:
-        my_followers_txt.write(follower + "\n")
+        my_followers_txt.write(follower[0] + "\n")
 
 
 def get_my_followers(config):
     username = config.username
     password = config.password
-    b = Bot()
+    ig = InstagramBot()
 
-    b.setUp()
-    b.go_to_page("https://www.instagram.com/accounts/login/")
-    b.login(username, password)
-
-    my_followers = b.get_my_followers(username)
+    ig.start()
+    ig.login(username, password)
+    my_followers = ig.get_my_followers()
     generate_my_followers_txt(my_followers)
 
 

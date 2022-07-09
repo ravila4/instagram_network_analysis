@@ -1,24 +1,26 @@
-"""
-A simple selenium test example written by python
-"""
-from collections import defaultdict
-from selenium import webdriver
-from selenium.common.exceptions import NoSuchElementException
-import random
-import time
-import re
+from calendar import c
 import collections
+import json
+import random
+import re
 import sys
+import time
+from collections import defaultdict
+from tkinter import W
+
+import requests
+from selenium.common.exceptions import NoSuchElementException
+from seleniumwire import webdriver
+from seleniumwire.utils import decode
+
 
 class Bot:
-    def setUp(self):
+    def start(self):
         """Start web driver"""
         chrome_options = webdriver.ChromeOptions()
         chrome_options.add_argument('--no-sandbox')
-        #chrome_options.add_argument('--headless')
         chrome_options.add_argument('--disable-gpu')
         chrome_options.add_argument("--lang=en")
-        self.times_restarted = 0  # keep track of how many times profile page has to be refreshed
         self.driver = webdriver.Chrome(chrome_options=chrome_options)
         self.driver.implicitly_wait(20)
 
@@ -27,63 +29,83 @@ class Bot:
         self.driver.quit()
 
     def go_to_page(self, url):
-        """Find and click top-right button"""
         try:
             self.driver.get(url)
         except NoSuchElementException as ex:
             self.fail(ex.msg)
 
+
+class InstagramBot(Bot):
+    times_restarted = 0  # keep track of how many times profile page has to be refreshed
+
     def login(self, username, password):
-        self.driver.find_element_by_xpath("//input[@name='username']").send_keys(username)
-        self.driver.find_element_by_xpath("//input[@name='password']").send_keys(password)
+        self.username = username
+        self.go_to_page("https://www.instagram.com/accounts/login/")
         time.sleep(2)
-        self.driver.find_element_by_xpath("//button[contains(.,'Log In')]").click()
+        self.driver.find_element("xpath", "//input[@name='username']").send_keys(username)
+        self.driver.find_element("xpath", "//input[@name='password']").send_keys(password)
+        time.sleep(2)
+        self.driver.find_element("xpath", "//button[contains(.,'Log In')]").click()
+        time.sleep(2)
+        # Not strictly necessary, but let's close the dialogs that pop up.
+        # Comment out the next lines if it causes problems.
+        self.driver.find_element("xpath", "//button[contains(.,'Not Now')]").click()
         time.sleep(3)
-        self.driver.find_element_by_xpath("//button[contains(.,'Not Now')]").click()
-        notNow = self.driver.find_element_by_class_name("HoLwm")
+        self.driver.find_element("xpath", "//button[contains(.,'Not Now')]").click()
         time.sleep(3)
-        notNow.click()
-        time.sleep(5)
 
-    def get_my_followers(self, username):
-        self.go_to_page("https://instagram.com/" + username + "/")
-        time.sleep(5)
+    def get_my_user_id(self):
+        self.go_to_page("https://instagram.com/" + self.username )
+        time.sleep(2)
+        user_info_url = f"https://i.instagram.com/api/v1/users/web_profile_info/?username={self.username}"
+        for request in self.driver.requests:
+            if request.url == user_info_url:
+                response = request.response
+                if response.status_code == 200:
+                    user_info = decode(response.body, response.headers.get('Content-Encoding', 'identity'))
+                    user_info = json.loads(user_info.decode('utf-8'))
+                    user_id = user_info['data']['user']['id']
+                    return user_id
+
+    def get_my_followers(self):
+        user_id = self.get_my_user_id()
+        assert user_id is not None, "Could not get user id."
+        self.go_to_page("https://instagram.com/" + self.username + "/followers/")
+        time.sleep(4)
         my_followers_set = set()
-        followers = self.driver.find_elements_by_class_name("-nal3")
-        followers[1].click()
-        time.sleep(2)
-        initialise_vars = 'elem = document.getElementsByClassName("isgrP")[0]; followers = parseInt(document.getElementsByClassName("g47SY")[1].innerText); times = parseInt(followers * 0.14); followersInView1 = document.getElementsByClassName("FPmhX").length'
-        initial_scroll = 'elem.scrollTop += 500'
-        next_scroll = 'elem.scrollTop += 1500'
-
-        with open('./jquery-3.3.1.min.js', 'r') as jquery_js:
-            # 3) Read the jquery from a file
-            jquery = jquery_js.read()
-            # 4) Load jquery lib
-            self.driver.execute_script(jquery)
-            # scroll down the page
-            self.driver.execute_script(initialise_vars)
-            #self.driver.execute_script(scroll_followers)
-            self.driver.execute_script(initial_scroll)
-            time.sleep(3)
-
-            next = True
-            while(next):
-                n_li_1 = len(self.driver.find_elements_by_class_name("FPmhX"))
-                self.driver.execute_script(next_scroll)
-                time.sleep(1.5)
-                n_li_2 = len(self.driver.find_elements_by_class_name("FPmhX"))
-                if(n_li_1 != n_li_2):
-                    following = self.driver.find_elements_by_xpath("//*[contains(text(), 'Following')]")
-                    for follow in following:
-                        el = follow.find_element_by_xpath('../..')
-                        el = el.find_element_by_tag_name('a')
-                        profile = el.get_attribute('href')
-                        my_followers_set.add(profile)
-                else:
-                    next = False
-
-            return list(my_followers_set)
+        followers_url = f"https://i.instagram.com/api/v1/friendships/{user_id}/followers/"
+        headers = None
+        # The web driver cache has the cookies and headers required to make the requests.
+        for request in self.driver.requests:
+            if request.url.startswith(followers_url):
+                if request.response.status_code == 200:
+                    headers = request.headers
+                    params = request.params
+                    break
+        assert headers is not None, "Could not find the headers to request followers."
+        # Get cookies
+        cookies_dict = {}
+        for cookie in self.driver.get_cookies():
+            cookies_dict[cookie['name']] = cookie['value']
+        # Change `count` parameter to get more followers
+        params['count'] = 200
+        # Request followers
+        response = requests.get(followers_url, headers=headers, params=params, cookies=cookies_dict)
+        response.raise_for_status()
+        followers = response.json()
+        for follower in followers['users']:
+            my_followers_set.add((follower['username'], follower['full_name'], follower['profile_pic_url']))
+        next_id = followers['next_max_id']
+        # Iterate over the next pages of followers
+        while next_id is not None:
+            params['max_id'] = next_id
+            response = requests.get(followers_url, headers=headers, params=params, cookies=cookies_dict)
+            response.raise_for_status()
+            followers = response.json()
+            for follower in followers['users']:
+                my_followers_set.add((follower['username'], follower['full_name'], follower['profile_pic_url']))
+            next_id = followers.get('next_max_id')
+        return list(my_followers_set)
 
     def get_followers(self, my_followers_arr, start_profile, relations_file):
         n_my_followers = len(my_followers_arr)
@@ -93,13 +115,13 @@ class Bot:
             print("Start scraping " + current_profile)
             self.go_to_page(current_profile)
             time.sleep(random.randint(5, 20))
-            last_5_following = collections.deque([1, 2, 3, 4, 5])  # queue to keep track of Instagram blocking scroll requests
+            last_5_following = collections.deque([1, 2, 3, 4, 5])  # keep track of Instagram blocking scroll requests
             count_my_followers += 1
 
             with open('start_profile.txt', 'w+') as outfile: # keep track of last profile checked
                 outfile.write(str(count_my_followers))
 
-            followers = self.driver.find_elements_by_class_name("-nal3")
+            followers = self.driver.find_elements("class name", "-nal3")
             followers[2].click()
             time.sleep(2)
             initialise_vars = 'elem = document.getElementsByClassName("isgrP")[0]; followers = parseInt(document.getElementsByClassName("g47SY")[1].innerText); times = parseInt(followers * 0.14); followersInView1 = document.getElementsByClassName("FPmhX").length'
@@ -120,7 +142,7 @@ class Bot:
                 next = True
                 follow_set = set()
                 # check how many people this person follows
-                nr_following = int(re.sub(",","",self.driver.find_elements_by_class_name("g47SY")[2].text))
+                nr_following = int(re.sub(",","",self.driver.find_elements("class name", "g47SY")[2].text))
 
                 n_li = 1
                 while next:
@@ -131,7 +153,7 @@ class Bot:
                     if not (n_li < nr_following - 11):
                         next = False
 
-                    n_li = len(self.driver.find_elements_by_class_name("FPmhX"))
+                    n_li = len(self.driver.find_elements("class name", "FPmhX"))
                     last_5_following.appendleft(n_li)
                     last_5_following.pop()
                     # if instagram starts blocking requests, reload page and start again
@@ -146,7 +168,7 @@ class Bot:
 
                 self.times_restarted = 0
 
-                following = self.driver.find_elements_by_class_name("FPmhX")
+                following = self.driver.find_elements("class name", "FPmhX")
                 for follow in following:
                     profile = follow.get_attribute('href')
                     if profile in my_followers_arr:
