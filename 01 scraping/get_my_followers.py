@@ -15,7 +15,7 @@ def get_my_followers(config):
 
     ig.start()
     ig.login(username, password)
-    my_followers = ig.get_my_followers()
+    my_followers = ig.get_followers(username)
     generate_my_followers_txt(my_followers)
 
 

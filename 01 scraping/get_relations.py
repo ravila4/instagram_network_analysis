@@ -1,13 +1,16 @@
-from bot import Bot
 import argparse
 import os.path
+
+from bot import InstagramBot
 
 
 def generate_txt(relations_file, my_followers_arr, username):
     relations = open(relations_file, 'w+')
+    user_url = "https://instagram.com/" + username + "/"
     for key in my_followers_arr:
-        line = key + " " + "https://www.instagram.com/" + username + "/\n" + "https://www.instagram.com/" + username + "/ " + key + "\n"
-        relations.write(line)
+        follower_url = "https://instagram.com/" + key + "/"
+        relations.write(follower_url + " " + user_url + "\n")
+        relations.write(user_url + " " + follower_url + "\n")
 
 
 def get_start_profile():
@@ -27,11 +30,10 @@ def get_relations(config):
     relations_file = config.relations_file
     username = config.username
     password = config.password
-    b = Bot()
+    ig = InstagramBot()
 
-    b.setUp()
-    b.go_to_page("https://www.instagram.com/accounts/login/")
-    b.login(username, password)
+    ig.start()
+    ig.login(username, password)
 
     my_followers_arr = get_my_followers_from_txt()
     if not os.path.isfile(relations_file):
@@ -45,7 +47,7 @@ def get_relations(config):
         with open('start_profile.txt', 'w+') as outfile:
             outfile.write("1")
 
-    b.get_followers(my_followers_arr, start_profile, relations_file)
+    ig.get_followers_following(my_followers_arr, start_profile, relations_file)
 
 
 if __name__ == '__main__':

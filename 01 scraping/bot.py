@@ -33,10 +33,11 @@ class Bot:
 
 
 class InstagramBot(Bot):
-    times_restarted = 0  # keep track of how many times profile page has to be refreshed
+
+    headers = None
+    cookies = None
 
     def login(self, username, password):
-        self.username = username
         self.go_to_page("https://www.instagram.com/accounts/login/")
         time.sleep(2)
         self.driver.find_element("xpath", "//input[@name='username']").send_keys(username)
@@ -51,10 +52,10 @@ class InstagramBot(Bot):
         self.driver.find_element("xpath", "//button[contains(.,'Not Now')]").click()
         time.sleep(3)
 
-    def get_my_user_id(self):
-        self.go_to_page("https://instagram.com/" + self.username )
+    def get_user_id(self, username):
+        self.go_to_page("https://instagram.com/" + username)
         time.sleep(2)
-        user_info_url = f"https://i.instagram.com/api/v1/users/web_profile_info/?username={self.username}"
+        user_info_url = f"https://i.instagram.com/api/v1/users/web_profile_info/?username={username}"
         for request in self.driver.requests:
             if request.url == user_info_url:
                 response = request.response
@@ -64,118 +65,117 @@ class InstagramBot(Bot):
                     user_id = user_info['data']['user']['id']
                     return user_id
 
-    def get_my_followers(self):
-        user_id = self.get_my_user_id()
-        assert user_id is not None, "Could not get user id."
-        self.go_to_page("https://instagram.com/" + self.username + "/followers/")
-        time.sleep(4)
-        my_followers_set = set()
+
+    def get_followers(self, username):
+        """"Get the followers of a user."""
+        user_id = self.get_user_id(username)
+        followers_set = set()
         followers_url = f"https://i.instagram.com/api/v1/friendships/{user_id}/followers/"
-        headers = None
-        # The web driver cache has the cookies and headers required to make the requests.
-        for request in self.driver.requests:
-            if request.url.startswith(followers_url):
-                if request.response.status_code == 200:
-                    headers = request.headers
-                    params = request.params
-                    break
-        assert headers is not None, "Could not find the headers to request followers."
-        # Get cookies
-        cookies_dict = {}
-        for cookie in self.driver.get_cookies():
-            cookies_dict[cookie['name']] = cookie['value']
-        # Change `count` parameter to get more followers
-        params['count'] = 200
+        if not self.headers:
+            # get headers required to make the requests
+            self.go_to_page(f"https://instagram.com/{username}/followers/")
+            time.sleep(4)
+            for request in self.driver.requests:
+                if request.url.startswith(followers_url):
+                    if request.response.status_code == 200:
+                        self.headers = request.headers
+                        break
+            assert self.headers is not None, f"Could not find the headers to request followers"
+        if not self.cookies:
+            # get cookies
+            cookies_dict = {}
+            for cookie in self.driver.get_cookies():
+                cookies_dict[cookie['name']] = cookie['value']
+            self.cookies = cookies_dict
         # Request followers
-        response = requests.get(followers_url, headers=headers, params=params, cookies=cookies_dict)
+        params = {"count": 200, "search_surface": "follow_list_page"}
+        response = requests.get(followers_url, headers=self.headers, params=params, cookies=self.cookies)
         response.raise_for_status()
         followers = response.json()
+        if len(followers) == 0:
+            return []
+        keys = ['username', 'full_name', 'profile_pic_url', 'pk']
         for follower in followers['users']:
-            my_followers_set.add((follower['username'], follower['full_name'], follower['profile_pic_url']))
-        next_id = followers['next_max_id']
+            followers_set.add(tuple(follower[key] for key in keys))
+        next_id = followers.get('next_max_id')
         # Iterate over the next pages of followers
         while next_id is not None:
             params['max_id'] = next_id
-            response = requests.get(followers_url, headers=headers, params=params, cookies=cookies_dict)
+            response = requests.get(followers_url, headers=self.headers, params=params, cookies=self.cookies)
             response.raise_for_status()
             followers = response.json()
             for follower in followers['users']:
-                my_followers_set.add((follower['username'], follower['full_name'], follower['profile_pic_url']))
+                followers_set.add(tuple(follower[key] for key in keys))
             next_id = followers.get('next_max_id')
-        return list(my_followers_set)
+        return list(followers_set)
 
-    def get_followers(self, my_followers_arr, start_profile, relations_file):
-        n_my_followers = len(my_followers_arr)
+    def get_following(self, username):
+        """"Get the users followed by a user."""
+        user_id = self.get_user_id(username)
+        following_set = set()
+        following_url = f"https://i.instagram.com/api/v1/friendships/{user_id}/following/"
+        if not self.headers:
+            # get headers required to make the requests
+            self.go_to_page(f"https://instagram.com/{username}/following/")
+            time.sleep(4)
+            for request in self.driver.requests:
+                if request.url.startswith(following_url):
+                    if request.response.status_code == 200:
+                        self.headers = request.headers
+                        break
+            assert self.headers is not None, f"Could not find the headers to request followers"
+        if not self.cookies:
+            # get cookies
+            cookies_dict = {}
+            for cookie in self.driver.get_cookies():
+                cookies_dict[cookie['name']] = cookie['value']
+            self.cookies = cookies_dict
+        # Request followers
+        params = {"count": 100}
+        response = requests.get(following_url, headers=self.headers, params=params, cookies=self.cookies)
+        response.raise_for_status()
+        following = response.json()
+        if len(following['users']) == 0:
+            return []
+        keys = ['username', 'full_name', 'profile_pic_url', 'pk']
+        for follow in following['users']:
+            following_set.add(tuple(follow[key] for key in keys))
+        next_id = following.get('next_max_id')
+        # Iterate over the next pages of followers
+        while next_id is not None:
+            params['max_id'] = next_id
+            response = requests.get(following_url, headers=self.headers, params=params, cookies=self.cookies)
+            response.raise_for_status()
+            followers = response.json()
+            for follower in followers['users']:
+                following_set.add(tuple(follower[key] for key in keys))
+            next_id = followers.get('next_max_id')
+        return list(following_set)
+
+    def get_followers_following(self, my_followers_arr, start_profile, relations_file):
         count_my_followers = start_profile - 1
 
         for current_profile in my_followers_arr[start_profile - 1 : -1] + [my_followers_arr[-1]]:
             print("Start scraping " + current_profile)
-            self.go_to_page(current_profile)
-            time.sleep(random.randint(5, 20))
-            last_5_following = collections.deque([1, 2, 3, 4, 5])  # keep track of Instagram blocking scroll requests
+            username = current_profile.split("/")[-1]
+            # keep track of last profile checked
             count_my_followers += 1
-
-            with open('start_profile.txt', 'w+') as outfile: # keep track of last profile checked
+            with open('start_profile.txt', 'w+') as outfile:
                 outfile.write(str(count_my_followers))
 
-            followers = self.driver.find_elements("class name", "-nal3")
-            followers[2].click()
-            time.sleep(2)
-            initialise_vars = 'elem = document.getElementsByClassName("isgrP")[0]; followers = parseInt(document.getElementsByClassName("g47SY")[1].innerText); times = parseInt(followers * 0.14); followersInView1 = document.getElementsByClassName("FPmhX").length'
-            initial_scroll = 'elem.scrollTop += 500'
-            next_scroll = 'elem.scrollTop += 2000'
+            following = self.get_following(username)
+            time.sleep(random.randint(5, 20))
+            following_intersection = set()
+            for user in following:
+                if user[0] in my_followers_arr:
+                    user_profile = "https://instagram.com/" + user[0] + "/"
+                    following_intersection.add((current_profile, user_profile))
 
-            with open('./jquery-3.3.1.min.js', 'r') as jquery_js:
-                # 3) Read the jquery from a file
-                jquery = jquery_js.read()
-                # 4) Load jquery lib
-                self.driver.execute_script(jquery)
-                # scroll down the page
-                self.driver.execute_script(initialise_vars)
-                # self.driver.execute_script(scroll_followers)
-                self.driver.execute_script(initial_scroll)
-                time.sleep(random.randint(2, 5))
+            with open(relations_file, "a") as outfile:
+                for relation in following_intersection:
+                    outfile.write(relation[0] + " " + relation[1] + "\n")
 
-                next = True
-                follow_set = set()
-                # check how many people this person follows
-                nr_following = int(re.sub(",","",self.driver.find_elements("class name", "g47SY")[2].text))
-
-                n_li = 1
-                while next:
-                    print(str(count_my_followers) + "/" + str(n_my_followers) + " " + str(n_li) + "/" + str(nr_following))
-                    time.sleep(random.randint(7, 12) / 10.0)
-                    self.driver.execute_script(next_scroll)
-                    time.sleep(random.randint(7, 12) / 10.0)
-                    if not (n_li < nr_following - 11):
-                        next = False
-
-                    n_li = len(self.driver.find_elements("class name", "FPmhX"))
-                    last_5_following.appendleft(n_li)
-                    last_5_following.pop()
-                    # if instagram starts blocking requests, reload page and start again
-                    if len(set(last_5_following)) == 1:
-                        print("Instagram seems to keep on loading. Refreshing page in 7 seconds")
-                        self.times_restarted += 1
-                        if self.times_restarted == 4:
-                            print("Instagram keeps on blocking your request. Terminating program. Start it again later.")
-                            sys.exit()
-                        time.sleep(7)
-                        self.get_followers(my_followers_arr, count_my_followers, relations_file)
-
-                self.times_restarted = 0
-
-                following = self.driver.find_elements("class name", "FPmhX")
-                for follow in following:
-                    profile = follow.get_attribute('href')
-                    if profile in my_followers_arr:
-                        follow_set.add((current_profile, profile))
-
-                with open(relations_file, "a") as outfile:
-                    for relation in follow_set:
-                        outfile.write(relation[0] + " " + relation[1] + "\n")
-
-                print("This person follows " + str(len(follow_set)) + " of your connections. \n")
+            print("This person follows " + str(len(following_intersection)) + " of your connections. \n")
 
         sys.exit()
 
